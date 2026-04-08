@@ -1,12 +1,27 @@
 # GPT Realtime Starter Kit
 
-A starter kit for building realtime speech-to-speech applications using the GPT Realtime API (`gpt-realtime-1.5`) on Azure AI Foundry.
+A starter kit for building realtime speech-to-speech applications using the [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/) and the GPT Realtime API (`gpt-realtime-1.5`) on Azure AI Foundry.
+
+## Architecture
+
+```
+Browser ──WebSocket──► FastAPI server ──SDK WebSocket──► Azure Realtime API
+                       (RealtimeRunner / RealtimeSession)
+                       ├─ SDK handles session configuration
+                       ├─ SDK auto-executes @function_tool calls
+                       └─ SDK emits high-level events → browser
+```
+
+The server uses the **OpenAI Agents SDK** (`RealtimeAgent` + `RealtimeRunner` + `RealtimeSession`) to manage the connection to Azure. Tools defined with `@function_tool` are executed automatically by the SDK — no manual event interception needed.
 
 ## Project Structure
 
 ```
 ├── assets/                        # Static assets
-├── frontend/                      # Frontend application
+├── config/
+│   ├── __init__.py                # YAML config loader (modes + defaults)
+│   ├── session_defaults.yaml      # Shared session baseline
+│   └── modes/                     # Mode presets (voice_assistant, transcription, etc.)
 ├── hooks/
 │   ├── postprovision.ps1          # Post-provision hook (Windows)
 │   └── postprovision.sh           # Post-provision hook (Linux/Mac)
@@ -17,9 +32,18 @@ A starter kit for building realtime speech-to-speech applications using the GPT 
 │       ├── ai-resource.bicep      # Azure OpenAI (Cognitive Services) account
 │       ├── ai-model-deployment.bicep  # gpt-realtime-1.5 model deployment
 │       └── role-assignment.bicep  # RBAC: Cognitive Services OpenAI User
+├── prompts/
+│   ├── __init__.py                # Prompt loader (.prompty files)
+│   ├── default.prompty            # General-purpose voice assistant
+│   ├── customer_support.prompty   # Domain-specific support agent
+│   └── transcriber.prompty        # Transcription + translation
 ├── src/
-│   ├── main.py                    # Application entry point
-│   └── chat.prompty               # Prompty configuration
+│   ├── main.py                    # FastAPI server with SDK session manager
+│   └── agent.py                   # RealtimeAgent factory
+├── tools/
+│   ├── __init__.py                # Tool exports (ALL_TOOLS list)
+│   ├── weather.py                 # @function_tool: get_weather
+│   └── search.py                  # @function_tool: search_knowledge_base
 ├── azure.yaml                     # Azure Developer CLI project config
 ├── LICENSE
 ├── README.md
@@ -36,6 +60,19 @@ Running `azd up` provisions the following in your Azure subscription:
 | **Azure OpenAI** | Cognitive Services account (`S0` SKU) |
 | **Model Deployment** | `gpt-realtime-1.5` (`2026-02-23`, GlobalStandard) |
 | **RBAC Role Assignment** | `Cognitive Services OpenAI User` for your identity (keyless auth) |
+
+## Supported GA Realtime Models
+
+This starter kit targets the **GA (Generally Available)** Realtime API only. Preview/beta models (`gpt-4o-realtime-preview`, `gpt-4o-mini-realtime-preview`) are **not** supported.
+
+| Model ID | Version | Description |
+|---|---|---|
+| `gpt-realtime-1.5` | `2026-02-23` | Latest and best quality — **default for this kit** |
+| `gpt-realtime` | `2025-08-28` | Base GA realtime model |
+| `gpt-realtime-mini` | `2025-12-15` | Cost-efficient, updated mini |
+| `gpt-realtime-mini` | `2025-10-06` | Cost-efficient GA model |
+
+To use a different model, set the `AZURE_OPENAI_DEPLOYMENT` environment variable to the deployment name of any GA model above.
 
 ## Getting Started
 
@@ -74,15 +111,19 @@ Running `azd up` provisions the following in your Azure subscription:
 
 ### Connect to the Realtime API
 
-The deployed model is accessible via WebSocket at:
+The server uses the OpenAI Agents SDK to connect to Azure. On each WebSocket connection to `/ws/{session_id}`, the server:
 
+1. Creates a `RealtimeAgent` with instructions from a `.prompty` file and `@function_tool` definitions
+2. Creates a `RealtimeRunner` and starts a `RealtimeSession` targeting your Azure deployment
+3. Authenticates using **Microsoft Entra ID** (keyless) via `DefaultAzureCredential`
+4. Relays audio and high-level SDK events between browser and Azure
+
+### Run locally
+
+```bash
+pip install -r requirements.txt
+uvicorn src.main:app --host 0.0.0.0 --port 8000
 ```
-wss://<your-resource>.openai.azure.com/openai/v1/realtime?model=gpt-realtime-1-5
-```
-
-Authentication uses **Microsoft Entra ID** (keyless). Use `AzureDeveloperCliCredential` or `DefaultAzureCredential` from the `azure-identity` SDK to obtain a Bearer token.
-
-See [GPT_REALTIME_TRANSCRIPTION_TUTORIAL.md](GPT_REALTIME_TRANSCRIPTION_TUTORIAL.md) for a full walkthrough of connecting, configuring sessions, streaming audio, and handling events.
 
 ### Tear Down
 
