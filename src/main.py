@@ -379,6 +379,18 @@ async def websocket_endpoint(
             elif message["type"] == "interrupt":
                 await manager.interrupt(session_id)
 
+            elif message["type"] == "text":
+                text = message.get("text", "")
+                if text:
+                    user_msg = {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": text},
+                        ],
+                    }
+                    await manager.send_user_message(session_id, user_msg)
+
     except WebSocketDisconnect:
         logger.info("Client disconnected — session=%s", session_id)
     except Exception as e:
