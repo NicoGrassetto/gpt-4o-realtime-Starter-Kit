@@ -1,5 +1,9 @@
 # GPT Realtime Starter Kit
 
+<p align="center">
+  <img src="assets/demo.gif" alt="Demo" width="720" />
+</p>
+
 [![Open in GitHub Codespaces](https://img.shields.io/static/v1?style=for-the-badge&label=GitHub+Codespaces&message=Open&color=brightgreen&logo=github)](https://codespaces.new/NicoGrassetto/gpt-4o-realtime-Starter-Kit)
 [![Open in Dev Containers](https://img.shields.io/static/v1?style=for-the-badge&label=Dev+Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/NicoGrassetto/gpt-4o-realtime-Starter-Kit)
 
@@ -11,10 +15,6 @@ A starter kit for building realtime speech-to-speech applications using the [Ope
   <a href="#manual-setup">Manual Setup</a> |
   <a href="#supported-ga-realtime-models">Supported GA Realtime Models</a> |
   <a href="#customization">Customization</a>
-</p>
-
-<p align="center">
-  <!-- TODO: Add architecture diagram -->
 </p>
 
 ## Project Structure
