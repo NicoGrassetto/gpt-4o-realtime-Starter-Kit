@@ -3,7 +3,7 @@ description: Audio in, text only out — live transcription / translation
 
 session:
   modalities: [text]
-  temperature: 0.3
+  temperature: 0.6
   input_audio_transcription:
     model: whisper-1
   turn_detection:

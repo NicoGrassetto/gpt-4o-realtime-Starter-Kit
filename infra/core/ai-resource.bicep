@@ -13,6 +13,7 @@ resource aiAccount 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
   }
   properties: {
     customSubDomainName: name
+    // NOTE: For production, set publicNetworkAccess to 'Disabled' and use Private Endpoints
     publicNetworkAccess: 'Enabled'
   }
 }

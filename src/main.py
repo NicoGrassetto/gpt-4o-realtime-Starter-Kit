@@ -37,11 +37,20 @@ load_dotenv()
 AZURE_OPENAI_ENDPOINT = os.environ["AZURE_OPENAI_ENDPOINT"]
 AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-realtime-1-5")
 
+ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:8000").split(",")
+    if o.strip()
+]
+MAX_SESSIONS = int(os.getenv("MAX_SESSIONS", "10"))
+# Max audio samples per WebSocket message (~20 s at 24 kHz mono 16-bit)
+_MAX_AUDIO_SAMPLES = 960_000
+
 app = FastAPI(title="GPT Realtime Starter Kit")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -300,15 +309,11 @@ manager = RealtimeWebSocketManager()
 @app.get("/health")
 async def health():
     try:
-        token = _get_azure_token()
-        return JSONResponse({
-            "status": "ok",
-            "token_length": len(token),
-            "endpoint": AZURE_OPENAI_ENDPOINT,
-            "deployment": AZURE_OPENAI_DEPLOYMENT,
-        })
+        _get_azure_token()
+        return JSONResponse({"status": "ok"})
     except Exception as e:
-        return JSONResponse({"status": "error", "detail": str(e)}, status_code=500)
+        logger.exception("Health check failed")
+        return JSONResponse({"status": "error", "detail": "Health check failed"}, status_code=500)
 
 
 @app.get("/api/modes")
@@ -358,7 +363,7 @@ async def get_models():
                 "status": "unknown",
             }],
             "default": AZURE_OPENAI_DEPLOYMENT,
-            "error": str(e),
+            "error": "Failed to list deployments",
         })
 
 
@@ -377,6 +382,12 @@ async def websocket_endpoint(
 ):
     logger.info("Client connecting — session=%s, mode=%s, prompt=%s, model=%s", session_id, mode, prompt, model or "default")
 
+    if len(manager.active_sessions) >= MAX_SESSIONS:
+        await websocket.accept()
+        await websocket.send_text(json.dumps({"type": "error", "error": "Maximum concurrent sessions reached"}))
+        await websocket.close()
+        return
+
     try:
         await manager.connect(websocket, session_id, mode, prompt, model)
     except FileNotFoundError as e:
@@ -387,7 +398,7 @@ async def websocket_endpoint(
     except Exception as e:
         logger.exception("Failed to connect session %s", session_id)
         await websocket.accept()
-        await websocket.send_text(json.dumps({"type": "error", "error": str(e)}))
+        await websocket.send_text(json.dumps({"type": "error", "error": "Connection failed"}))
         await websocket.close()
         return
 
@@ -396,14 +407,23 @@ async def websocket_endpoint(
     try:
         while True:
             data = await websocket.receive_text()
-            message = json.loads(data)
+            try:
+                message = json.loads(data)
+            except json.JSONDecodeError:
+                logger.warning("Invalid JSON from session %s", session_id)
+                continue
 
-            if message["type"] == "audio":
-                int16_data = message["data"]
+            msg_type = message.get("type")
+
+            if msg_type == "audio":
+                int16_data = message.get("data", [])
+                if not isinstance(int16_data, list) or len(int16_data) > _MAX_AUDIO_SAMPLES:
+                    logger.warning("Audio payload too large or invalid from session %s", session_id)
+                    continue
                 audio_bytes = struct.pack(f"{len(int16_data)}h", *int16_data)
                 await manager.send_audio(session_id, audio_bytes)
 
-            elif message["type"] == "image":
+            elif msg_type == "image":
                 data_url = message.get("data_url")
                 prompt_text = message.get("text") or "Please describe this image."
                 if data_url:
@@ -417,15 +437,15 @@ async def websocket_endpoint(
                     }
                     await manager.send_user_message(session_id, user_msg)
 
-            elif message["type"] == "commit_audio":
+            elif msg_type == "commit_audio":
                 await manager.send_client_event(
                     session_id, {"type": "input_audio_buffer.commit"}
                 )
 
-            elif message["type"] == "interrupt":
+            elif msg_type == "interrupt":
                 await manager.interrupt(session_id)
 
-            elif message["type"] == "text":
+            elif msg_type == "text":
                 text = message.get("text", "")
                 if text:
                     user_msg = {

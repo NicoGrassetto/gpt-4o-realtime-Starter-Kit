@@ -3,7 +3,7 @@ session:
   voice: alloy
   input_audio_format: pcm16
   output_audio_format: pcm16
-  temperature: 0.7
+  temperature: 0.8
   modalities:
     - text
     - audio

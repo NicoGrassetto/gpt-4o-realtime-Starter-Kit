@@ -9,6 +9,8 @@
 
 A starter kit for building realtime speech-to-speech applications using the [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/) and the GPT Realtime API on Azure AI Foundry. It uses **Bicep** infrastructure-as-code and `azd` deployment automation to provision an Azure OpenAI resource with a GA Realtime model, then connects a **FastAPI** server via WebSocket to relay audio and SDK events between the browser and Azure.
 
+> **Warning — Not production-ready.** This starter kit is designed for **proof-of-concept and learning** scenarios. It ships with no authentication, no TLS, permissive CORS, and no production-grade rate limiting. Before deploying beyond localhost, add proper authentication, enable HTTPS, and review the [security considerations](#security-considerations) section.
+
 <p align="center">
   <a href="#project-structure">Project Structure</a> |
   <a href="#quick-start">Quick Start</a> |
@@ -88,6 +90,13 @@ AZURE_OPENAI_ENDPOINT="https://<your-resource>.openai.azure.com/"
 AZURE_OPENAI_DEPLOYMENT="gpt-realtime-1-5"
 ```
 
+Optional environment variables:
+
+| Variable | Default | Description |
+|---|---|---|
+| `ALLOWED_ORIGINS` | `http://localhost:5173,http://localhost:8000` | Comma-separated list of allowed CORS origins |
+| `MAX_SESSIONS` | `10` | Maximum number of concurrent WebSocket sessions |
+
 ### 2. Install Dependencies & Run
 
 ```bash
@@ -105,7 +114,7 @@ azd down
 
 ## Supported GA Realtime Models
 
-This starter kit targets the **GA (Generally Available)** Realtime API only. Preview/beta models (`gpt-4o-realtime-preview`, `gpt-4o-mini-realtime-preview`) are **not** supported.
+This starter kit targets the **GA (Generally Available)** Realtime API only. Preview/beta models (`gpt-4o-realtime-preview`, `gpt-4o-mini-realtime-preview`) are not targeted by this kit, though they are supported by the API — GA models are recommended for stability.
 
 | Model ID | Version | Description |
 |---|---|---|
@@ -141,7 +150,7 @@ system:
 You are a concise technical assistant that answers in bullet points.
 ```
 
-The prompt is selected at connection time via the `prompt` query parameter on the WebSocket URL (e.g. `/ws/{session_id}?prompt=my_agent`). If omitted, `default` is used. Available prompts are listed at the `GET /prompts` endpoint.
+The prompt is selected at connection time via the `prompt` query parameter on the WebSocket URL (e.g. `/ws/{session_id}?prompt=my_agent`). If omitted, `default` is used. Available prompts are listed at the `GET /api/prompts` endpoint.
 
 ### Function Tools
 
@@ -153,11 +162,15 @@ To add a new tool:
 
    ```python
    from agents import function_tool
+   import ast
 
    @function_tool
    def calculate(expression: str) -> str:
-       """Evaluate a math expression and return the result."""
-       return str(eval(expression))  # replace with a safe parser
+       """Evaluate a simple math expression and return the result."""
+       # WARNING: Never use eval() — it allows arbitrary code execution.
+       # Use ast.literal_eval for safe literal expressions, or a library
+       # like simpleeval for full math support.
+       return str(ast.literal_eval(expression))
    ```
 
 2. Register it in [tools/__init__.py](tools/__init__.py):
@@ -177,16 +190,18 @@ The file [config/session_defaults.yaml](config/session_defaults.yaml) defines th
 | Setting | Default | Description |
 |---|---|---|
 | `voice` | `alloy` | TTS voice. Options: `alloy`, `ash`, `ballad`, `coral`, `echo`, `sage`, `shimmer`, `verse` |
-| `input_audio_format` | `pcm16` | Format of audio sent from the client (`pcm16` or `g711_ulaw`) |
-| `output_audio_format` | `pcm16` | Format of audio returned to the client (`pcm16` or `g711_ulaw`) |
-| `temperature` | `0.7` | Sampling temperature (0.0–1.0). Lower = more deterministic |
+| `input_audio_format` | `pcm16` | Format of audio sent from the client (`pcm16`, `g711_ulaw`, or `g711_alaw`) |
+| `output_audio_format` | `pcm16` | Format of audio returned to the client (`pcm16`, `g711_ulaw`, or `g711_alaw`) |
+| `temperature` | `0.8` | Sampling temperature (0.6–1.2). Lower = more deterministic. API default is 0.8 |
 | `modalities` | `[text, audio]` | Output modalities. `[text]` for text-only, `[text, audio]` for speech |
-| `input_audio_transcription.model` | `whisper-1` | Model used to transcribe incoming audio |
-| `turn_detection.type` | `server_vad` | Turn detection strategy: `server_vad` (auto), `semantic_vad` (semantic), or `null` (manual/push-to-talk) |
-| `turn_detection.threshold` | `0.5` | VAD sensitivity (0.0–1.0). Higher = requires louder speech to trigger |
-| `turn_detection.prefix_padding_ms` | `300` | Audio included before detected speech starts (ms) |
-| `turn_detection.silence_duration_ms` | `200` | Silence needed to end a turn (ms) |
+| `input_audio_transcription.model` | `whisper-1` | Model used to transcribe incoming audio. Also supports `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`, `gpt-4o-transcribe-diarize` |
+| `input_audio_noise_reduction` | *(not set)* | Noise reduction filter: `near_field` (headphones) or `far_field` (laptop/room mics). Set to `null` to disable |
+| `turn_detection` | `server_vad` object | Turn detection config. Set to `server_vad` or `semantic_vad` object, or set `turn_detection: null` to disable (manual/push-to-talk) |
+| `turn_detection.threshold` | `0.5` | VAD sensitivity (0.0–1.0). Higher = requires louder speech to trigger (`server_vad` only) |
+| `turn_detection.prefix_padding_ms` | `300` | Audio included before detected speech starts, in ms (`server_vad` only) |
+| `turn_detection.silence_duration_ms` | `200` | Silence needed to end a turn, in ms (`server_vad` only) |
 | `turn_detection.create_response` | `true` | Automatically generate a response when a turn ends |
+| `turn_detection.interrupt_response` | `true` | Automatically interrupt ongoing response when new speech is detected |
 
 ### Modes
 
@@ -210,11 +225,23 @@ description: Low-temperature text-only mode
 
 session:
   modalities: [text]
-  temperature: 0.2
+  temperature: 0.6
   turn_detection: null
 ```
 
 Only the settings you specify are overridden; everything else inherits from `session_defaults.yaml`.
+
+> **Note:** The Realtime API enforces a **30-minute maximum session duration**. Plan for session renewal if you need longer interactions.
+
+## Security Considerations
+
+This starter kit is intended for **local development and proof-of-concept** use. Before deploying to a shared or production environment:
+
+- **Add authentication** — The server currently has no auth on any endpoint. Add API key validation or integrate with Microsoft Entra ID.
+- **Enable HTTPS** — Run behind a TLS-terminating reverse proxy (e.g. Azure App Service, nginx). Audio streams over plain WebSocket are unencrypted.
+- **Restrict CORS** — Set the `ALLOWED_ORIGINS` environment variable to your specific frontend domain(s). The default allows only `localhost`.
+- **Review infrastructure** — The Bicep templates deploy Azure OpenAI with `publicNetworkAccess: Enabled`. For production, use Private Endpoints and disable public access.
+- **Rate limiting** — The `MAX_SESSIONS` env var provides a basic concurrency cap. For production, add proper rate limiting middleware.
 
 ## License
 
