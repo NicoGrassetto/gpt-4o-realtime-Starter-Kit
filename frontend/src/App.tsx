@@ -12,7 +12,7 @@ import { createAudioPlayer, type AudioPlayer } from "./lib/audioPlayer";
 import "./App.css";
 
 // Modes that show the audio orb (audio output)
-const orbModes = ["voice_assistant", "push_to_talk", "vision", "text_to_speech"];
+const orbModes = ["voice_assistant", "vision", "text_to_speech"];
 // Modes that show vision image preview
 const visionModes = ["vision", "vision_text"];
 // Modes whose output is text-only (no audio playback)

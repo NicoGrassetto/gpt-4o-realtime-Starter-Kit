@@ -210,7 +210,6 @@ Mode presets in [config/modes/](config/modes/) override specific session default
 | Mode | Description |
 |---|---|
 | `voice_assistant` | Continuous voice conversation with server VAD |
-| `push_to_talk` | Manual commit — client sends audio and explicitly triggers a response |
 | `text_chat` | Text input and text output only — no audio |
 | `text_to_speech` | Text input, audio + text output — type a message and hear the response |
 | `transcription` | Audio in, text only out — live transcription / translation (uses `semantic_vad`) |

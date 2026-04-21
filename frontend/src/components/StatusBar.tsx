@@ -3,7 +3,6 @@ import "./StatusBar.css";
 
 const modeLabels: Record<string, string> = {
   voice_assistant: "Voice Assistant",
-  push_to_talk: "Push to Talk",
   transcription: "Transcription",
   vision: "Vision",
   vision_text: "Vision (Text)",

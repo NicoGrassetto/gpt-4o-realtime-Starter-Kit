@@ -26,7 +26,7 @@ interface ChatInputProps {
 }
 
 // Modes that accept audio input
-const micModes = ["voice_assistant", "push_to_talk", "transcription", "vision", "vision_text"];
+const micModes = ["voice_assistant", "transcription", "vision", "vision_text"];
 // Modes that show camera button
 const cameraModes = ["vision", "vision_text"];
 // Modes where text send is the primary input
